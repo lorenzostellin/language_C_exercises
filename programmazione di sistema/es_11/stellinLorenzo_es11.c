@@ -1,48 +1,94 @@
 #include <stdio.h>
-#include <unistd.h>
 #include <stdlib.h>
-#include <fcntl.h>
 #include <string.h>
+#include <ctype.h>
+#include <unistd.h>
 #include <sys/wait.h>
+
+#define READ 0
+#define WRITE 1
+#define DIMM 512
 
 int main(int argc, char *argv[])
 {
     if (argc != 2)
-    {
-        printf("Numero argomenti sbagliato\n");
         exit(1);
-    }
 
-    int p1p2[2], pid;
+    int numArticolo, pid, p0p1[2], nread;
+    char buff[DIMM];
 
-    pipe(p1p2);
-
-    pid = fork();
-    if (pid == 0)
+    while (1)
     {
-        close(p1p2[0]);
-        int buffer[50];
-        char stringa[50];
-        printf("Inserisci il numero dell’articolo che vuoi ricercare:\n");
-        scanf("%s", stringa);
-        write(p1p2[1], stringa, sizeof(buffer));
-        exit(0);
-    }
-    char articolo_iniziale[100], articolo_finale[100];
-    if (pid == 0)
-    {
-        close(p1p2[1]);
+        // Dichiarazione dell'array di caratteri chiamato "risposta"
+        char risposta[8];
 
-        read(p1p2[0], stringa, sizeof(stringa));
-        sprintf(argomento_grep, "'(?<=%s)(?s).*", stringa);
-        sprintf(articolo_finale, "(?=%d)'", atoi(stringa) + 1);
-        strncat(argomento_grep, articolo_finale, sizeof(articolo_finale));
-        execl("/usr/bin/grep", "grep", "-z", "-o", argomento_grep, argv[1], NULL);
-        exit(0);
-    }
+        // Stampa del messaggio di richiesta input da parte dell'utente
+        printf("Scrivi \"esci\" per chiudere il programma\nInserisci il numero dell’articolo che vuoi ricercare:\n-");
 
-    close(p1p2[0]);
-    close(p1p2[1]);
+        // Acquisizione dell'input dell'utente attraverso la funzione "scanf"
+        scanf("%s", risposta);
+
+        // Converte tutti i caratteri dell'input inserito in minuscolo
+        for (int i = 0; risposta[i] != '\0'; i++)
+            risposta[i] = tolower(risposta[i]);
+
+        // Se l'input dell'utente è "esci", viene interrotta l'esecuzione del programma
+        if (strcmp("esci", risposta) == 0)
+        {
+            break;
+        }
+        // Altrimenti si continua l'esecuzione
+        else
+        {
+            // Converte la stringa di caratteri in un intero
+            int numArticolo = atoi(risposta);
+
+            // Crea una pipe con la funzione "pipe"
+            pipe(p0p1);
+
+            // Crea un nuovo processo con la funzione "fork"
+            pid = fork();
+
+            // Se pid vale 0, il processo figlio P1 esegue un comando "grep" sul file di input specificato dall'utente
+            if (pid == 0)
+            {
+                // Chiude i file descriptor inutilizzati
+                close(p0p1[READ]);
+                close(WRITE);
+
+                // Riconfigura l'output del comando "grep" per la pipe usando la funzione "dup"
+                dup(p0p1[WRITE]);
+                close(p0p1[WRITE]);
+
+                // Comando "grep" con argomenti specificati dall'utente e dalla funzione "sprintf"
+                char argomento_grep[50];
+                sprintf(argomento_grep, "(?<=ART. %d.)(?s).*(?=ART. %d.)", numArticolo, numArticolo + 1);
+                execl("/usr/bin/grep", "grep", "-z", "-o", "-P", argomento_grep, argv[1], (char *)0);
+                return -1;
+            }
+            // Se pid vale più di 0, il processo padre P0 legge l'output ottenuto dal processo figlio attraverso la pipe
+            else if (pid > 0)
+            {
+                // Chiude il lato inutilizzato della pipe
+                close(p0p1[WRITE]);
+
+                // Legge l'output dalla pipe e lo stampa a schermo
+                while ((nread = read(p0p1[READ], buff, 1)) > 0)
+                {
+                    printf("%s", buff);
+                }
+
+                // Chiude il lato inutilizzato della pipe
+                close(p0p1[READ]);
+            }
+            // Se il processo non viene creato correttamente, viene stampato a schermo un messaggio di errore
+            else
+            {
+                printf("errore durante la creazione del processo figlio\n");
+                exit(1);
+            }
+        }
+    }
 
     return 0;
 }
